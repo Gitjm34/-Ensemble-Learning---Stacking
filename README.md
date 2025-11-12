@@ -1,0 +1,132 @@
+# -Ensemble-Learning---Stacking
+
+### **1. 스태킹이란?**
+
+![](https://blog.kakaocdn.net/dn/cm2k6n/btrbbTJGQhh/8WAPpG9sCXwMWdSYPZMH51/img.png)
+
+**스태킹**이란 개별적인 여러 알고리즘을 서로 결합해 예측 결과를 도출한다는 점에서 배깅 및 부스팅과 공통점을 가지고있습니다.
+
+하지만 가장 큰 차이점은 개별 알고리즘으로 예측한 데이터를 기반으로 다시 예측을 수행한다는 것입니다.
+
+즉, **개별 모델을 통해 한 번 예측하고 그 예측한 결과를 다시 학습 데이터와 테스트 데이터로 나누어서 다시 예측하는 것** 입니다.
+
+스태킹 모델은 두 종류의 모델이 필요합니다.
+
+**개별 기반 모델들** (위 그림의 파랑, 보라, 빨강 모델) 과 개별 기반 모델의 예측 결과를 학습 데이터로 만들어서 학습하고 예측하는 **최종 메타 모델** (위 그림의 초록 모델) 입니다.
+
+### **2. 과적합 개선을 위한 CV 세트 기반의 스태킹**
+
+대부분의 앙상블 기법은 결정 트리 기반의 학습기를 결합해 성능을 개선하는데 결정 트리 알고리즘은 정보의 균일도에 기반한 규칙 트리를 만들어서 예측을 수행합니다.
+
+하지만 **균일한 예측 결과를 도출하기 위해서 결정 트리가 깊어지고 복잡해지면서 과적합이 쉽게 발생하게 됩니다.**
+
+따라서 이러한 **과적합을 개선**하기 위해 최종 메타 모델을 위한 데이터 세트를 만들 때 **교차 검증** 기반으로 예측된 결과 데이터 세트를 이용합니다.
+
+즉, 개별 기반 모델을 통해 예측할 때 교차 검증을 하여 예측하는 것입니다.
+
+이는 보다 그림으로 이해하는 것이 훨씬 쉬우므로 그림을 통해 알아보겠습니다.
+
+![](https://blog.kakaocdn.net/dn/Vac0G/btra8AjFFue/PmESAwl5pKdSFiIPfKjp01/img.png)
+
+먼저, 개별 모델 1~4로 원본 학습/테스트 데이터를 교차 검증하여 예측합니다.
+
+예측한 결과들을 스태킹하여 최종 메타 모델을 위한 학습 데이터와 테스트 데이터를 생성합니다.
+
+이렇게 생성된 최종 학습 데이터와 원본 데이터의 레이블 데이터를 합쳐서 메타 모델을 학습한 후에 최종 테스트 데이터로 예측을 수행합니다.
+
+그 뒤, 최종 예측 결과를 원본 테스트 데이터의 레이블 데이터와 비교해 평가하면 됩니다.
+
+**개별 모델로 교차 검증하는 과정**은 다음과 같습니다.
+
+우선, 학습 데이터를 K개의 폴드로 나눠서 1개의 검증 폴드와 K-1개의 학습 폴드로 나눕니다.
+
+K-1개의 학습 폴드로 개별 모델을 학습시킨 후 검증 폴드로 예측하고 그 결과를 최종 메타 모델에서 사용할 학습 데이터에 저장합니다.
+
+그 후에 학습된 개별 모델로 원본 테스트 데이터를 예측하여 예측값을 생성합니다.
+
+이 과정을 K번 반복하면 K개의 행을 가진 학습 데이터가 생성되게 되고
+
+K번의 반복을 통해 생성된 K개의 예측값의 평균값을 최종 메타 모델에서 테스트 데이터로 사용합니다.
+
+이렇게 개별 모델을 모두 교차 검증하여 각각의 학습 데이터와 테스트 데이터를 생성하고
+
+생성된 데이터들을 쌓아서 최종 메타 모델에 사용할 학습 데이터 세트와 테스트 데이터 세트를 생성하게 됩니다.
+
+이제 **스태킹 모델로 유방암 데이터 세트를 분류**해보겠습니다.
+
+사용할 개별 모델은 KNN, RandomForest, AdaBoost, DecisionTree 이고, 최종 메타 모델은 Logistic Regression을 사용하겠습니다.
+
+```python
+# 개별 모델, 메타 모델과 데이터 세트 준비import numpy as np
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
+cancer_data=load_breast_cancer()
+
+X_data=cancer_data.data
+y_label=cancer_data.target
+
+X_train,X_test,y_train,y_test=train_test_split(X_data,y_label,test_size=0.2,random_state=0)
+
+knn_clf=KNeighborsClassifier(n_neighbors=4)
+rf_clf=RandomForestClassifier(n_estimators=100,random_state=0)
+dt_clf=DecisionTreeClassifier()
+ada_clf=AdaBoostClassifier(n_estimators=100)
+
+lr_final_clf=LogisticRegression(C=10)
+```
+
+```python
+from sklearn.model_selection import KFold
+from sklearn.metrics import mean_absolute_error
+import warnings
+
+#개별 모델로 K 교차 검증 수행하여 최종 메타 모델의 학습 데이터와 테스트 데이터 생성def get_stacking_base_datasets(model,X_train_n, y_train_n, X_test_n, n_folds ):
+    kf=KFold(n_splits=n_folds, shuffle=False, random_state=0 )
+# 추후에 메타 모델이 사용할 학습 데이터 반환을 위한 넘파이 배열 초기화
+    train_fold_pred=np.zeros((X_train_n.shape[0],1))
+    test_pred=np.zeros((X_test_n.shape[0],n_folds))
+
+    for folder_counter,(train_index,valid_index) in enumerate(kf.split(X_train_n)):
+        X_tr=X_train_n[train_index]
+        y_tr=y_train_n[train_index]
+        X_vl=X_train_n[valid_index]
+
+        model.fit(X_tr,y_tr)
+#개별 모델의 예측을 통해 생성된 학습 데이터 (메타 모델의 학습 데이터로 쓰임)
+        train_fold_pred[valid_index,:]=model.predict(X_vl).reshape(-1,1)
+#개별 모델의 예측을 통해 생성된 테스트 데이터 (메타 모델의 테스트 데이터로 쓰임)
+        test_pred[:,folder_counter]=model.predict(X_test_n)
+
+    test_pred_mean=np.mean(test_pred,axis=1).reshape(-1,1)
+    return train_fold_pred,test_pred_mean
+
+knn_train,knn_test=get_stacking_base_datasets(knn_clf,X_train,y_train,X_test,7)
+rf_train,rf_test=get_stacking_base_datasets(rf_clf,X_train,y_train,X_test,7)
+dt_train,dt_test=get_stacking_base_datasets(dt_clf,X_train,y_train,X_test,7)
+ada_train,ada_test=get_stacking_base_datasets(ada_clf,X_train,y_train,X_test,7)
+
+# 개별 모델의 결과들을 옆으로 쌓기 (스태킹)
+Stack_final_X_train=np.concatenate((knn_train,rf_train,dt_train,ada_train),axis=1)
+Stack_final_X_test=np.concatenate((knn_test,rf_test,dt_test,ada_test),axis=1)
+
+# 메타 모델을 학습시키고 예측하여 원본 테스트 레이블과 비교하여 정확도 평가
+lr_final_clf.fit(Stack_final_X_train,y_train)
+stack_final_pred=lr_final_clf.predict(Stack_final_X_test)
+print('최종 메타 모델의 예측 정확도: {0:.4f}'.format(accuracy_score(y_test,stack_final_pred)))
+```
+
+![](https://blog.kakaocdn.net/dn/bITOma/btrbd09JRKQ/KeYeITt2NLpKEF0VxpgaS1/img.png)
+
+이렇게 스태킹 모델의 원리와 과적합을 방지하는 법을 알아보고 코드로 구현해봤습니다.
+
+스태킹 모델의 핵심은 바로 메타 모델이 사용할 학습 데이터 세트와 테스트 데이터 세트를 개별 모델의 예측 값들을 쌓아서 생성하는 데 있습니다.
+
+스태킹 기법은 kaggle에서 성능 개선을 위해 거의 필수적으로 사용한다고 하니 알아두면 kaggle의 competition에서 성능 개선을 조금이라도 할 수 있을 것이라 생각합니다.
